@@ -39,16 +39,18 @@ pipeline{
             }
         }
         stage('docker build & push'){
-            when { branch 'master' }   // build/push images only from the main line, not from PRs
+            // Build only from version branches: 1.0, 2.2, ...  (no 'master' anymore)
+            when { branch pattern: '\\d+\\.\\d+', comparator: 'REGEXP' }
             steps {
                 script {
-                    def gitsha = (env.GIT_COMMIT ?: 'dev').take(7)
-                    def tag    = "${env.BUILD_NUMBER}-${gitsha}"
+                    // version = pom.xml <version> (keep its major.minor == the branch name, e.g. branch 1.0 -> 1.0.x)
+                    def ver = sh(script: "mvn -q -DforceStdout help:evaluate -Dexpression=project.version", returnStdout: true).trim()
+                    def tag = "${ver}-${env.BUILD_NUMBER}"   // e.g. 1.0.0-7  (immutable, branch-scoped)
                     docker.withRegistry(env.REGISTRY, env.DOCKERHUB_CRED) {
                         def image = docker.build("${env.IMAGE}:${tag}", ".")
-                        image.push()          // immutable tag
-                        image.push('latest')  // moving tag
+                        image.push()   // the only tag we push now — no moving ':latest'
                     }
+                    echo "Pushed ${env.IMAGE}:${tag}"
                 }
             }
         }
